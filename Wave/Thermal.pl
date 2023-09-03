@@ -19,7 +19,7 @@ recreate_layers();
 # check if a themral layer exists
 my $layer_flag = check_for_layer('thermal','comp_pins','comp_body');
 pop_up("$layer_flag layer was not found.") if $layer_flag;
-exit 0 if $layer_flag;
+exit 1 if $layer_flag;
 
 clear_and_reset;
 # getting the names of the layers
@@ -45,12 +45,24 @@ foreach my $i(keys %leads){
 
 # starting from thermal relief
 # run down the layers and from TOP to BOT
-for (my $i = get_row_number("top"); $i <= get_row_number("bottom"); $i++){
+
+my $top_row = get_layer_row_number_by_name("top");
+my $bot_row = get_layer_row_number_by_name("bottom");
+
+for (my $i = $top_row; $i <= $bot_row; $i++){
+	
 	my $layer = get_layer_names_by_row($i);
 	my $key;
+	next if check_for_dielectric($layer);
+	valor(
+		"matrix_copy_row,job=$JOB,matrix=matrix,row=$i,ins_row=" . get_layer_row_number_by_name('thermal'),
+		"matrix_layer_type,job=$JOB,matrix=matrix,layer=$layer,type=document"
+	);
+
 	# $i is the layer index. 
 	valor(
 	# set up a filter
+		"filter_reset",
 		"display_layer,name=comp_pins,display=yes,number=3",
 		"work_layer,name=comp_pins",
 		"filter_set,filter_name=popup,update_popup=no,feat_types=surface",
@@ -71,21 +83,20 @@ for (my $i = get_row_number("top"); $i <= get_row_number("bottom"); $i++){
 	clear_and_reset;
 	recreate_layers("trace");
 	valor(
-
 		"display_layer,name=testing,number=4,display=yes",
 		"work_layer,name=testing",
 		"filter_reset",
 		"filter_set,filter_name=popup,update_popup=no,feat_types=surface",
 		"filter_area_strt",
-		"filter_area_end,layer=,filter_name=popup,operation=select",
+		"filter_area_end,layer=,filter_name=popup,operation=select"
+	);
+	valor(
 		"affected_layer,name=$layer,mode=single,affected=yes",
 		"filter_set,filter_name=popup,update_popup=no,feat_types=line",
 		"sel_ref_feat,layers=$layer,use=select,mode=touch,polarity=positive\;negative",
 		"sel_copy_other,dest=layer_name,target_layer=trace,invert=no,dx=0,dy=0,size=0"
-		
-	);
-
-
+	)if get_select_count;
+	
 	# now we got the testing layer for testing for thermal with tear drops cleared.
 	# trace later for calculation
 	
@@ -123,21 +134,49 @@ for (my $i = get_row_number("top"); $i <= get_row_number("bottom"); $i++){
 	# spoke calculationing
 	# first select the spokes
 	# refence selection to the PAD
-	valor("sel_clear_feat");
 	
+	valor("sel_clear_feat");
 	my $layer_oz = get_cu_weight_value($layer,"mil");
-	foreach my $pin(keys %leads){
+	
+	#
+	# the idea is to limit the test only to the pins that should be tested.
+	# refence from thermal to the trace
+	# from the trace back to thermal and then to the comp pins
+	#
+	
+	valor(
+		"filter_reset",
+		"display_layer,name=testing,display=no,number=3",
+		"display_layer,name=comp_pins,display=no,number=3",
+		"affected_layer,name=trace,mode=single,affected=yes",
+		"sel_ref_feat,layers=thermal,use=filter,mode=touch,f_types=pad\;surface,polarity=positive\;negative",
+		"affected_layer,name=thermal,mode=single,affected=yes");
+	
+	
+	if(get_select_count){
+		
+		valor(
+			"sel_ref_feat,use=select,mode=touch,f_types=pad,polarity=positive\;negative",
+			"affected_layer,name=trace,mode=single,affected=no",
+			"affected_layer,name=comp_pins,mode=single,affected=yes",
+			"sel_ref_feat,use=select,mode=touch,f_types=pad,polarity=positive\;negative",
+		);
+	}
+	my %testing_leads = data_pads("comp_pins",'s');
+	
+	valor("affected_layer,name=,mode=all,affected=no","display_layer,display=yes,name=comp_pins,number=3");
+	foreach my $pin(keys %testing_leads){
+		
+		next if $pin eq '';
 		# prep work for the loop 
 		# we going need to climb up from the lead to the spoke.
 		# lead -> Pad -> Spoke
 		valor(
-			"display_layer,display=yes,name=comp_pins,number=3",
 			"work_layer,name=comp_pins"
 		);
-		
+
 		# selects the lead under test
 		select_pad($pin, 'comp_pins');
-		
 		valor(
 			"affected_layer,name=testing,mode=single,affected=yes",
 			"filter_set,filter_name=popup,update_popup=no,feat_types=pad",
@@ -145,6 +184,8 @@ for (my $i = get_row_number("top"); $i <= get_row_number("bottom"); $i++){
 		);
 		
 		# here we got the pad from the testing layer selected.
+		
+		next unless get_select_count;
 		my %temp_spoke_data = data_pads('testing', 's');
 		# possible eage case not a round PAD
 		$temp_spoke_data{(keys %temp_spoke_data)[0]}->{symbol} =~ /(\d+(?:\.\d+)?)/;
@@ -154,12 +195,12 @@ for (my $i = get_row_number("top"); $i <= get_row_number("bottom"); $i++){
 		# now we need to select the spokes
 		
 		valor(
-			"display_layer,display=no,name=comp_pins,number=3",
 			"display_layer,display=yes,name=trace,number=4",
 			"work_layer,name=trace",
 			"filter_set,filter_name=popup,update_popup=no,feat_types=line",
 			"sel_ref_feat,use=select,mode=touch,f_types=pad\;surface,polarity=positive\;negative",
 		);
+
 
 
 # use a valid REFDES to get its leads
@@ -176,7 +217,7 @@ for (my $i = get_row_number("top"); $i <= get_row_number("bottom"); $i++){
 		$spokes_results{$pin}->{$layer}->{spokes_count} = get_select_count;
 		
 		my ($res) = (scalar (keys %spoke) * (($spoke{(keys %spoke)[0]}->{symbol} =~ /([+-]?\d+(?:\.\d+)?)/)[0]) * $layer_oz) * 0.000625 ; # converting mil 
-		
+#		pop_up($res);
 		$spokes_results{$pin}->{$layer}->{layer} = $res;
 		$spokes_results{$pin}->{total_result} += $res;
 		$spokes_results{$pin}->{x} = $leads{$pin}->{x};
@@ -243,13 +284,33 @@ foreach my $index(@id){
 	valor("sel_clear_feat");
 }
 
-
 clear_and_reset;
 
-# calling the checklist.
-	create_checklist("thermal");
-# adding the custom module to the checklist
+# affect all the temp layers
+$top_row = get_layer_row_number_by_name("top+1");
+$bot_row = get_layer_row_number_by_name("bottom+1");
 
+for (my $i = $top_row; $i <= $bot_row; $i++){
+	my $layer = get_layer_names_by_row($i);
+	valor(
+		"affected_layer,name=$layer,mode=single,affected=yes",
+		"matrix_layer_type,job=$JOB,matrix=matrix,layer=$layer,type=signal"
+	);
+}
+
+valor(
+	"filter_set,filter_name=popup,update_popup=no,feat_types=line",
+	"filter_area_strt",
+	"filter_area_end,layer=,filter_name=popup,operation=select,area_type=none,inside_area=no,intersect_area=no,lines_only=no,ovals_only=no",
+	"sel_delete",
+	"affected_layer,name=,mode=all,affected=no",
+
+);
+
+
+# calling the checklist.
+create_checklist("thermal");
+# adding the custom module to the checklist
 valor(
 	"chklist_cadd,chklist=thermal,action=valor_analysis_signal,row=0",
 	"chklist_reread_erfs,chklist=thermal,nact=1,path=C:/MentorGraphics/ERFS/Slivers/signal.erf",
@@ -265,37 +326,59 @@ valor(
 # open the file
 open(my $fh, '<', $file) or die "Cannot open file: $!";
 while (my $line = <$fh>) {
-	#chomp $line;
+	chomp $line;
+	my($x,$y,$res,$layer);
 	my @results = split(" ",$line);
-	my $x = ($results[5] + $results[7]) / 2;
-	my $y = ($results[6] + $results[8]) / 2;
+	
+	# adding support for the diffrent types of alerts slivers and p2s
+	
+#	pop_up("check the results");
+
+	if($results[0] =~ /sliver/ ){
+		$x = ($results[5] + $results[7]) / 2;
+		$y = ($results[6] + $results[8]) / 2;
+	} else {
+		$x = ($results[7] + $results[9]) / 2;
+		$y = ($results[8] + $results[10]) / 2;
+	}
 	# now the maiun check if the cord is located with in the rectengal of the refdes.
 	my @id = (keys %data);
-	
 	foreach my $i(@id){
-	#	pop_up("SW2 is getting tested") if $i eq "SW2";
 		if(	$x >= $data{$i}->{x_min} && 
 			$x <= $data{$i}->{x_max} && 
 			$y >= $data{$i}->{y_min} &&
 			$y <= $data{$i}->{y_max} ){
 			# <- End of the if -> #
 			# if (!defined $data{$i}->{mes} || ($results[2] < $data{$i}->{mes}))
-			$data{$i}->{mes} = $results[2];
-			if(${$data{$i}{layer}}[0]){
-				push @{$data{$i}->{layer}}, $results[1];
-			} else {
-				$data{$i}->{layer} = [$results[1]];
-			}
+			$data{$i}->{mes} = $res = $results[2] if (!defined $data{$i}->{mes} || ($results[2] < $data{$i}->{mes}));
+			push @{$data{$i}->{layer}}, substr($results[1], 0, -2);
 		}
 	}
 }
-
-valor("chk_delete,chklist=thermal");
-
 close($fh);
+
+# clean up of the temp layers
+$top_row = get_layer_row_number_by_name("top+1");
+$bot_row = get_layer_row_number_by_name("bottom+1");
+
+for (my $i = $bot_row; $i >= $top_row ; $i--){
+	remove_layers(get_layer_names_by_row($i));
+}
+$top_row = get_layer_row_number_by_name("top");
+$bot_row = get_layer_row_number_by_name("bottom");
+for (my $i = $top_row; $i <= $bot_row; $i++){
+	my $layer = get_layer_names_by_row($i);
+	if($layer eq "top" || $layer eq "bottom"){ 
+		valor("matrix_layer_type,job=$JOB,matrix=matrix,layer=$layer,type=signal");
+	} else {
+		valor("matrix_layer_type,job=$JOB,matrix=matrix,layer=$layer,type=mixed");
+	}
+}
+
+
 @id = (keys %issue);
 
-$file = "C:\\MentorGraphics\\Valor\\vNPI_TMP\\thermal_results.txt";
+$file = 'C:\MentorGraphics\Valor\vNPI_TMP\thermal_results.txt';
 open(my $fl, '>', $file) or die "Cannot open file: $!";
 # %issue holds the probelms from thermal relief
 # %data holds the problems from thermal isolation
@@ -316,7 +399,7 @@ foreach my $i(@id){
 
 # this will set what kind of board is being used
 my $board_thickness = ((get_board_thickness) * 25.4);
-$board_thickness  < 2.36 ? $temp  = 0.35 : $temp = 1;
+$board_thickness  < 2.36 ? $temp = 1 : $temp  = 0.35;
 
 print $fl "Heat Transfer Area:\n";
 @id = (keys %spokes_results);
@@ -328,7 +411,7 @@ foreach my $i(keys %leads){
 }
 foreach my $i(@id){
 	my $res = $spokes_results{$i}->{total_result};
-	if($res > $temp){
+#	if($res > $temp){
 		valor(
 			"affected_layer,name=comp_pins,mode=single,affected=yes",
 			"display_layer,name=drill,number=4,display=yes",
@@ -342,10 +425,9 @@ foreach my $i(@id){
 		my %temp = data_pads("drill",'s');
 		my $key = (keys %temp)[0];
 		print $fl "$leads{$i}->{refdes}\t$temp{$key}->{x}\t$temp{$key}->{y}\t$res\t" . join (", ", @{$spokes_results{$i}->{layers}}). "\n"
-	}
+#	}
 }
-
-
+clear_and_reset;
 close($fl); 
-valor("chklist_delete,chklist=thermal");
+#valor("chklist_delete,chklist=thermal");
 system(1,"notepad.exe $file");

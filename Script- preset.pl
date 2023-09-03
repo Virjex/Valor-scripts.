@@ -13,9 +13,7 @@ use vars qw( $top $bot $temp @issue @refs );
 use lib dirname(__FILE__);
 use DFM_Util;
 
-valor("chklist_res_del");
-
-clear_and_reset();
+DFM_Util::clear_and_reset();
 
 =begine
 	If working with components this is kinda a must.
@@ -25,16 +23,16 @@ clear_and_reset();
 	3 - top and bottom
 =cut
 
-if (check_comp_sides() == 0){
-	pop_up("No components were found on the baord");
+if (DFM_Util::check_comp_sides() == 0){
+	DFM_Util::pop_up("No components were found on the baord");
 	exit(0);
-}	elsif (check_comp_sides() == 1) {
+}	elsif (DFM_Util::check_comp_sides() == 1) {
 		# TOP only
 		
-}	elsif (check_comp_sides() == 2) {
+}	elsif (DFM_Util::check_comp_sides() == 2) {
 		# BOT only
 		
-}	elsif (check_comp_sides() == 3) {
+}	elsif (DFM_Util::check_comp_sides() == 3) {
 		# TOP + BOT
 		
 }

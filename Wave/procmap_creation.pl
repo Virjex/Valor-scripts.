@@ -353,34 +353,41 @@ my $pads_top		= 	'flex_temp_04';
 my $pads_bot		= 	'flex_temp_05';
 my $keepout_layer	= 	'flex_temp_06';
 my $thermal			= 	'flex_temp_09';
-my $refz;
-my $refz_list;
-my $tFlag;
-my $bFlag;
-
+my ($refz,$refz_list,$tFlag,$bFlag);
 
 #First select all needed components from TOP side
-$tFlag = draw_components_pins("top",$comps_top);
-$bFlag = draw_components_pins("bot",$comps_bot);
 
-if (!$tFlag and !$bFlag) { 
+my $sides = check_comp_sides();
+
+if ($sides == 0){
 	$V->VOF();
 	delete_temp_layers();
 	pop_up ("No components we selected <br>
 			exising script"); 
 	$V->VON();
 	exit(0);
+	exit(0);
+}	elsif ($sides == 1) {
+	$tFlag = draw_components_pins("top",$comps_top);
+}	elsif ($sides == 2) {
+	$bFlag = draw_components_pins("bot",$comps_bot);
+
+}	elsif ($sides == 3) {
+
+	$tFlag = draw_components_pins("top",$comps_top);
+	$bFlag = draw_components_pins("bot",$comps_bot);
 }
 
-valor(	"display_layer,name=drill,number=9,display=yes"
-		,"filter_reset"
-		,"work_layer,name=drill"
-		,"filter_atr_set,filter_name=popup,attribute=.drill,entity=feature,condition=yes,option=plated"
-		,"filter_area_strt"
-		,"filter_area_end,layer=,filter_name=popup,operation=select"
-		,"sel_copy_other,dest=layer_name,target_layer=$drill"
-		,"display_layer,name=drill,number=9,display=no"
-		);
+valor(
+	"display_layer,name=drill,number=9,display=yes"
+	,"filter_reset"
+	,"work_layer,name=drill"
+	,"filter_atr_set,filter_name=popup,attribute=.drill,entity=feature,condition=yes,option=plated"
+	,"filter_area_strt"
+	,"filter_area_end,layer=,filter_name=popup,operation=select"
+	,"sel_copy_other,dest=layer_name,target_layer=$drill"
+	,"display_layer,name=drill,number=9,display=no"
+);
 
 
 if ($tFlag) {
@@ -394,23 +401,26 @@ if ($bFlag) {
 
 #resizing the pads and copping it to the keepout_layer
 $size = $GUI_PROC_RADIUS * 2;
-valor(	"display_layer,name=$pads_top,display=yes,number=4"
-		,"work_layer,name=$pads_top"
-		,"sel_resize,size=$size"
-		,"display_layer,name=comp_+_top,display=yes,number=1"
-		,"sel_reverse");
+$V->VOF();
+if ($tFlag){
+valor(	
+	"display_layer,name=$pads_top,display=yes,number=4"
+	,"work_layer,name=$pads_top"
+	,"sel_resize,size=$size"
+	,"display_layer,name=comp_+_top,display=yes,number=1"
+	,"sel_reverse");
 		
-		if(get_count()){
-			pop_up("Edit openings used for the top somponents");
-		}
-		valor("display_layer,name=$pads_top,display=yes,number=1",
-			"work_layer,name=$pads_top",
-			"sel_all_feat",
-			"sel_copy_other,dest=layer_name,target_layer=$thermal,invert=no,dx=0,dy=0,size=0"
-			);
+	if(get_count()){
+		pop_up("Edit openings used for the top somponents");
+	}
+	valor("display_layer,name=$pads_top,display=yes,number=1",
+		"work_layer,name=$pads_top",
+		"sel_all_feat",
+		"sel_copy_other,dest=layer_name,target_layer=$thermal,invert=no,dx=0,dy=0,size=0"
+		);
 		
 		clear_and_reset();
-		$V->VOF();
+		
 		valor(
 		"sel_clear_feat"
 		,"display_layer,name=$pads_top,display=yes,number=1"
@@ -429,25 +439,25 @@ valor(	"display_layer,name=$pads_top,display=yes,number=4"
 		,"display_layer,name=$keepout_layer,display=no,number=9"
 		,"display_layer,name=$pads_bot,display=yes,number=4"
 		,"work_layer,name=$pads_bot"
-		,"sel_resize,size=$size"
-		,"display_layer,name=comp_+_bot,display=yes,number=1"
-		,"sel_reverse");
+		,"sel_resize,size=$size");
+} 
+	if($bFlag){
 		
+		valor("display_layer,name=comp_+_bot,display=yes,number=1"
+		,"sel_reverse");
+
 		if(get_count()){
 			pop_up("Edit openings used for the bottom somponents");
 		}
 		
-		valor("display_layer,name=$pads_bot,display=yes,number=1",
+		clear_and_reset();
+		valor(
+			"display_layer,name=$pads_bot,display=yes,number=1",
 			"work_layer,name=$pads_bot",
 			"sel_all_feat",
 			"sel_copy_other,dest=layer_name,target_layer=$thermal,invert=no,dx=0,dy=0,size=0",
-			"display_layer,name=$thermal,display=yes,number=1",
-			"work_layer,name=$thermal",
-			"sel_resize,size=" . (($size * -1) +10)
-			);
-		clear_and_reset();
-		valor(
-		"display_layer,name=$pads_bot,display=yes,number=1"
+			
+		,"display_layer,name=$pads_bot,display=yes,number=1"
 		,"work_layer,name=$pads_bot"
 		,"sel_reverse"
 		,"sel_contourize,accuracy=0,break_to_islands=yes,clean_hole_size=3,clean_hole_mode=x_and_y"
@@ -468,8 +478,9 @@ valor(	"display_layer,name=$pads_top,display=yes,number=4"
 		,"display_layer,name=flex_temp_07,display=no,number=9"
 		,"display_layer,name=$keepout_layer,number=1"
 		,"cur_atr_reset");
-		clear_and_reset();
-		$V->VON();
+}
+clear_and_reset();
+$V->VON();
 #end of keepout layer
 
 #getting the ref that in side of the keep out area.
@@ -479,8 +490,32 @@ get_ref("bot", $pads_top) if ($tFlag);
 
 fill_area($pads_top) if ($tFlag); 
 fill_area($pads_bot) if ($bFlag);
+clear_and_reset();
+valor(
+	"display_layer,name=$thermal,display=yes,number=1",
+	"work_layer,name=$thermal",
+	"sel_resize,size=" . (($size * -1) +10)
+	);
+clear_and_reset();
+valor(
+	"display_layer,name=comp_pins_bot,display=yes,number=1",
+	"work_layer,name=comp_pins_bot",
+	"sel_all_feat",
+	"sel_move_other,target_layer=comp_pins_top,invert=no,dx=0,dy=0,size=0",
+	"delete_layer,layer=comp_pins_bot",
+	
+	"display_layer,name=comp_body_bot,display=yes,number=1",
+	"work_layer,name=comp_body_bot",
+	"sel_all_feat",
+	"sel_move_other,target_layer=comp_body_top,invert=no,dx=0,dy=0,size=0",
+	"delete_layer,layer=comp_body_bot",
+	
+	"rename_layer,name=comp_body_top,new_name=comp_body",
+	"rename_layer,name=comp_pins_top,new_name=comp_pins"
+	
+	);
 
-
+clear_and_reset();
 #renaming the layers
 	valor("matrix_rename_layer,job=$JOB,matrix=matrix,layer=$keepout_layer,new_name=keepout_layer"
 	,"matrix_rename_layer,job=$JOB,matrix=matrix,layer=$pads_bot,new_name=procmap_top"
@@ -498,12 +533,19 @@ fill_area($pads_bot) if ($bFlag);
 	);
 	clear_and_reset();
 
+
+
+
 show_results();
 
 }
 
 sub get_results_data{
 	my @lines = @{$_[0]};
+
+	my $sides = check_comp_sides();
+	return unless $sides == 3;
+
 	valor("affected_layer,name=comp_+_top,mode=single,affected=yes" , "affected_layer,name=comp_+_bot,mode=single,affected=yes");
 	foreach my $usedref (sort keys %issue) {
 
@@ -512,24 +554,15 @@ sub get_results_data{
 		$V->COM("filter_area_end,layer=,filter_name=popup,operation=select");  
 		$V->DO_INFO("-t eda -e $JOB/$STEP -m script -d COMP -p centroidx -o select");
 		my $x = ($V->{doinfo}{gCOMPcentroidx});
-		if(!${$x}[0]){
-			${$x}[0] = "$usedref was not found";
-		} else {
-			${$x}[0]*=1000;
-		}
+
 		$V->DO_INFO("-t eda -e $JOB/$STEP -m script -d COMP -p centroidy -o select");
 		my $y = ($V->{doinfo}{gCOMPcentroidy});
-			if(!${$y}[0]){
-			${$y}[0] = "$usedref was not found";
-		} else {
-			${$y}[0]*=1000;
-		}
+
 		$V->DO_INFO("-t eda -e $JOB/$STEP -m script -d COMP -p SIDE -o select");
 		my $side = ($V->{doinfo}{gCOMPside});
 		${$side}[0] = "$usedref was not found" if(!${$side}[0]);
 		valor("sel_clear_feat");
-		
-		
+
 		$issue{$usedref} = {
 			x => ${$x}[0],
 			y => ${$y}[0],
@@ -574,18 +607,20 @@ sub get_ref(){
 	my $openings = shift;
 	my $refz;
 	clear_and_reset();
+	my $sides = check_comp_sides();
+	return unless $sides == 3;
+
 	valor( 
 		"display_layer,name=comp_+_". ( $side eq "top" ? "top" : "bot" ) .",display=yes,number=1",
 		"work_layer,name=comp_+_". ( $side eq "top" ? "top" : "bot" ),
 		"sel_ref_feat,layers=$openings,use=filter,mode=touch,f_types=pad\;surface,polarity=positive\;negative"
 		);
-		
-		
 	$V->DO_INFO("-t eda -e $JOB/$STEP -m script -d COMP -p refdes -o select");
 	$refz = $V->{doinfo}{gCOMPrefdes};
 	
+	
 	if(${$refz}[0]){
-		for(my $i = 0; $i < scalar @$refz -1; $i++){
+		for(my $i = 0; $i < scalar @$refz; $i++){
 			push(@Refdes_List, ${$refz}[$i]);
 			$issue{${$refz}[$i]} = undef;
 		}
@@ -817,26 +852,6 @@ sub draw_components_pins{
 			"sel_delete",
 			"filter_reset",
 		);
-		
-		if ($side ne "top"){
-		DFM_Util::valor(
-			"display_layer,name=comp_pins_bot,display=yes,number=1",
-			"work_layer,name=comp_pins_bot",
-			"sel_all_feat",
-			"sel_move_other,target_layer=comp_pins_top,invert=no,dx=0,dy=0,size=0",
-			"delete_layer,layer=comp_pins_bot",
-			
-			"display_layer,name=comp_body_bot,display=yes,number=1",
-			"work_layer,name=comp_body_bot",
-			"sel_all_feat",
-			"sel_move_other,target_layer=comp_body_top,invert=no,dx=0,dy=0,size=0",
-			"delete_layer,layer=comp_body_bot",
-			
-			"rename_layer,name=comp_body_top,new_name=comp_body",
-			"rename_layer,name=comp_pins_top,new_name=comp_pins"
-			
-			);
-		}
 	
 	$V->VON();
 	valor("display_layer,name=$layer,display=yes,number=1","sel_reverse");

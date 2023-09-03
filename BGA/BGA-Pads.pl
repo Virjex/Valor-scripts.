@@ -31,6 +31,7 @@ if ($sides == 0){
 		$top = check_for_BGA("top");
 		#seperate refs that are on surfaces or just on pads
 		check_surface("top") if $top;
+		
 		pads_check("top") if $pRef[0];
 		check_sm("top") if $sRef[0];
 		
@@ -59,7 +60,6 @@ if ($sides == 0){
 		
 		#seperate refs that are on surfaces or just on pads
 		check_surface("top") if $top;
-
 		pads_check("top") if $pRef[0];
 
 		check_sm("top") if $sRef[0];
@@ -125,7 +125,7 @@ sub pads_check{
 	# the main control going to be the size of @pRef
 	
 	# now do this for all the componenets
-	for(my $i = 0; $i <= scalar @pRef -1; $i++ ){
+	for(my $i = 0; $i < scalar @pRef; $i++ ){
 		BGA_lead_selection($side, $pRef[$i]);	
 		
 		my $pin_count = get_select_count();
@@ -164,7 +164,7 @@ sub pads_check{
 				$smalles_SM = $sm_symbols[$j];
 			}
 		}
-		
+
 		my %data = data_pads("pads");
 		my @id = (keys %data);
 		# ive chnagee the data_pads to use the serial of the pad
@@ -180,22 +180,22 @@ sub pads_check{
 
 			# add the SM check. smallets vs pad size
 
-
-			valor("sel_clear_feat",
-			
-							"display_layer,name=comp_+_$side,display=yes,number=1",
-							"display_layer,name=sm$side,display=yes,number=2",
-							"display_layer,name=" . ($side eq "top" ? "top" : "bottom") . ",display=yes,number=3",
-							"display_layer,name=pads,display=yes,number=4",
-							"work_layer,name=pads",
-							"filter_set,filter_name=popup,update_popup=no,include_syms=".$data{$id[0]}{'symbol'},
-							"clear_highlight",
-							"filter_highlight,layer=",
-							"display_layer,name=pads,display=no,number=4",
-							"work_layer,name=comp_+_$side",
-							"filter_comp_set,filter_name=popup,update_popup=no,ref_des_names=$pRef[$i]",
-							"sel_ref_feat,layers=pads,use=filter,mode=touch,f_types=pad,polarity=positive\;negative",
-							"pan_selected","zoom_selected","sel_clear_feat");
+			valor(
+				"sel_clear_feat",
+				"display_layer,name=comp_+_$side,display=yes,number=1",
+				"display_layer,name=sm$side,display=yes,number=2",
+				"display_layer,name=" . ($side eq "top" ? "top" : "bottom") . ",display=yes,number=3",
+				"display_layer,name=pads,display=yes,number=4",
+				"work_layer,name=pads",
+				"filter_set,filter_name=popup,update_popup=no,include_syms=".$data{$id[0]}{'symbol'},
+				"clear_highlight",
+				"filter_highlight,layer=",
+				"display_layer,name=pads,display=no,number=4",
+				"work_layer,name=comp_+_$side",
+				"filter_comp_set,filter_name=popup,update_popup=no,ref_des_names=$pRef[$i]",
+				"sel_ref_feat,layers=pads,use=filter,mode=touch,f_types=pad,polarity=positive\;negative",
+				"pan_selected","zoom_selected","sel_clear_feat"
+			);
 						
 			# get the uni symbols and set them to the $issue_data{$pRef[$i]}{'pad'}			
 			
@@ -208,11 +208,13 @@ sub pads_check{
 			pop_up("Refdes: ". $pRef[$i] .". Has non-uniform soldering pads <br>
 							Pad sizes: " . join(", ",@unique_pads));
 			clear_and_reset();
+			recreate_layers("pads","sm");
+			next;
 		} else {
 
 			valor("sel_clear_feat");
 			if (($smalles_SM =~ /([+-]?\d+(?:\.\d+)?)/)[0] < ($data{$id[0]}{'symbol'} =~ /([+-]?\d+(?:\.\d+)?)/)[0] && scalar @sm_symbols > 1){
-				valor("display_layer,name=comp_+_$side,display=yes,number=1",
+				valor(			"display_layer,name=comp_+_$side,display=yes,number=1",
 								"display_layer,name=sm$side,display=yes,number=2",
 								"display_layer,name=" . ($side eq "top" ? "top" : "bottom") . ",display=yes,number=3",
 								
@@ -237,9 +239,64 @@ sub pads_check{
 				$issue_data{$pRef[$i]}{'solder area'} = $smalles_SM;
 				$issue_data{$pRef[$i]}{'test'} = "Smallest SM";
 				pop_up("BGA: ". $pRef[$i] .". failed on smallest SM check");
+				clear_and_reset();
+				recreate_layers("pads","sm");
+				next;
 			}
 		}
-		
+
+		# via's edge-case or pad under pad
+		clear_and_reset();
+		valor(
+			"affected_layer,name=pads,mode=single,affected=yes",
+			"sel_all_feat",
+			"filter_set,filter_name=popup,update_popup=no,feat_types=pad",
+			"affected_layer,name=" . ($side eq "top" ? "top" : "bottom") .",mode=single,affected=yes",
+			"sel_ref_feat,layers=,use=select,mode=touch,f_types=pad,polarity=positive\;negative"
+		);
+		my %pads_info = data_pads("pads");
+		my %copper_info = data_pads( ($side eq "top" ? "top" : "bottom") ,'s');
+		valor("sel_copy_other,dest=layer_name,target_layer=pads,invert=no,dx=0,dy=0,size=0",);
+		my @unique_pads = extract_unique_symbols(%pads_info);
+		my @unique_copper = extract_unique_symbols(%copper_info);
+
+		if($unique_pads[0] ne $unique_copper[0] || scalar @unique_copper != 1 || scalar @unique_pads != 1 ){
+			clear_and_reset();
+			valor(
+				"sel_clear_feat",
+				"display_layer,name=comp_+_$side,display=yes,number=1",
+				"display_layer,name=sm$side,display=yes,number=2",
+				"display_layer,name=" . ($side eq "top" ? "top" : "bottom") . ",display=yes,number=3",
+				"display_layer,name=pads,display=yes,number=4",
+				"work_layer,name=" . ($side eq "top" ? "top" : "bottom"),
+
+				"filter_set,filter_name=popup,update_popup=no,include_syms=".$unique_copper[(scalar @unique_copper) -1],
+				"filter_set,filter_name=popup,update_popup=no,feat_types=pad",
+				"clear_highlight",
+
+				"filter_highlight,layer=",
+				"display_layer,name=pads,display=no,number=4",
+				"work_layer,name=comp_+_$side",
+				"filter_comp_set,filter_name=popup,update_popup=no,ref_des_names=$pRef[$i]",
+				"sel_ref_feat,layers=pads,use=filter,mode=touch,f_types=pad,polarity=positive\;negative",
+				"pan_selected","zoom_selected","sel_clear_feat"
+			);
+						
+			# get the uni symbols and set them to the $issue_data{$pRef[$i]}{'pad'}			
+			
+			my @unique_pads = extract_unique_symbols(data_pads("pads"));
+			
+			push(@issue,$pRef[$i]);
+			$issue_data{$pRef[$i]}{'pad'} = join(", ",@unique_pads);
+			$issue_data{$pRef[$i]}{'test'} = "Has non-uniform soldering pads";	
+			
+			pop_up("Refdes: ". $pRef[$i] .". Has non-uniform soldering pads <br>
+							Pad sizes: " . join(", ",@unique_pads));
+			clear_and_reset();
+
+		}
+
+		clear_and_reset();
 		recreate_layers("pads","sm");
 	}
 }
@@ -268,26 +325,28 @@ valor("affected_layer,name=sm,mode=single,affected=yes",
 		clear_and_reset();
 
 		#get the pads and copy them
-		BGA_lead_selection($side, $sRef[$i]);	
-		valor("filter_set,filter_name=popup,update_popup=no,feat_types=pad",
-					"display_layer,name=comp_+_$side,display=no,number=1",
-					"affected_layer,name=" . ($side eq "top" ? "top" : "bottom") . ",mode=single,affected=yes",
-					"filter_atr_set,filter_name=popup,attribute=.smd,entity=feature,condition=yes",
-					"filter_atr_set,filter_name=popup,attribute=.pad_usage,entity=feature,condition=yes,option=toeprint",
-					"sel_ref_feat,layers=bga_pins_$side,use=select,mode=touch,f_types=pad,polarity=positive\;negative",
-					"sel_copy_other,dest=layer_name,target_layer=pads,invert=no,dx=0,dy=0,size=0",
-					
-					"filter_reset",
-					"clear_layers",
-					"affected_layer,name=,mode=all,affected=no",
-					
-					# remove the pads that are on surface but first get the SM.
-					"display_layer,name=pads,display=yes,number=1",
-					"work_layer,name=pads",
-					
-					# this will select the pads that are on a surface.
-					"sel_ref_feat,layers=sur_$side,use=filter,mode=touch,f_types=surface,polarity=positive\;negative,include_syms=,exclude_syms="
-					);
+		BGA_lead_selection($side, $sRef[$i]);
+
+		valor(
+			"filter_set,filter_name=popup,update_popup=no,feat_types=pad",
+			"display_layer,name=comp_+_$side,display=no,number=1",
+			"affected_layer,name=" . ($side eq "top" ? "top" : "bottom") . ",mode=single,affected=yes",
+			"filter_atr_set,filter_name=popup,attribute=.smd,entity=feature,condition=yes",
+			"filter_atr_set,filter_name=popup,attribute=.pad_usage,entity=feature,condition=yes,option=toeprint",
+			"sel_ref_feat,layers=bga_pins_$side,use=select,mode=touch,f_types=pad,polarity=positive\;negative",
+			"sel_copy_other,dest=layer_name,target_layer=pads,invert=no,dx=0,dy=0,size=0",
+			
+			"filter_reset",
+			"clear_layers",
+			"affected_layer,name=,mode=all,affected=no",
+			
+			# remove the pads that are on surface but first get the SM.
+			"display_layer,name=pads,display=yes,number=1",
+			"work_layer,name=pads",
+			
+			# this will select the pads that are on a surface.
+			"sel_ref_feat,layers=sur_$side,use=filter,mode=touch,f_types=surface,polarity=positive\;negative,include_syms=,exclude_syms="
+			);
 		
 		# this count is for what pad are located on a surface.
 		my $pad_count = get_select_count();
@@ -312,25 +371,26 @@ valor("affected_layer,name=sm,mode=single,affected=yes",
 		# if this test fails we will move to the next refdes.
 		if(get_select_count() != $pad_count){
 
-			valor("display_layer,name=comp_+_$side,display=yes,number=1",
-							"display_layer,name=sm$side,display=yes,number=2",
-							"display_layer,name=" . ($side eq "top" ? "top" : "bottom") . ",display=yes,number=3",
-							"display_layer,name=sm,display=yes,number=4",
-							"work_layer,name=sm",
-							
-							"filter_set,filter_name=popup,update_popup=no,include_syms=".$data{$id[1]}{'symbol'},
-							"clear_highlight",
-							"filter_highlight,layer=",
-							
-							"display_layer,name=sm,display=no,number=4",
-							#select and show compoent
-							"work_layer,name=comp_+_$side",
-							"filter_comp_set,filter_name=popup,update_popup=no,ref_des_names=$sRef[$i]",
-							"filter_area_strt",
-							"filter_area_end,layer=,filter_name=popup,operation=select",
-							"pan_selected","zoom_selected","sel_clear_feat","filter_reset"
-							);
-			
+			valor(
+				"display_layer,name=comp_+_$side,display=yes,number=1",
+				"display_layer,name=sm$side,display=yes,number=2",
+				"display_layer,name=" . ($side eq "top" ? "top" : "bottom") . ",display=yes,number=3",
+				"display_layer,name=sm,display=yes,number=4",
+				"work_layer,name=sm",
+				
+				"filter_set,filter_name=popup,update_popup=no,include_syms=".$data{$id[1]}{'symbol'},
+				"clear_highlight",
+				"filter_highlight,layer=",
+				
+				"display_layer,name=sm,display=no,number=4",
+				#select and show compoent
+				"work_layer,name=comp_+_$side",
+				"filter_comp_set,filter_name=popup,update_popup=no,ref_des_names=$sRef[$i]",
+				"filter_area_strt",
+				"filter_area_end,layer=,filter_name=popup,operation=select",
+				"pan_selected","zoom_selected","sel_clear_feat","filter_reset"
+			);
+
 			push(@issue,$sRef[$i]);
 			$issue_data{$sRef[$i]}{'test'} = "Diffrent solder masks on a surface.";
 			
@@ -349,30 +409,28 @@ valor("affected_layer,name=sm,mode=single,affected=yes",
 		valor("sel_move_other,target_layer=temp");
 		#get the SM and copy it to the layer. and removing what ever is on a surface.
 		valor(
-					"clear_layers",
-					
-					"display_layer,name=sm$side,display=yes,number=4",
-					"work_layer,name=sm$side",
-					
-					"sel_ref_feat,layers=pads,use=filter,mode=touch,f_types=pad,polarity=positive\;negative",
-					"sel_copy_other,dest=layer_name,target_layer=sm,invert=no,dx=0,dy=0,size=0",
-					
-					"display_layer,name=pads,display=yes,number=4",
-					"work_layer,name=pads",
-					"sel_ref_feat,layers=temp,use=filter,mode=touch,f_types=pad\;surface,polarity=positive\;negative",
-					"sel_delete",
-					
-					"clear_layers",
-					"affected_layer,name=,mode=all,affected=no",
-					
-					"display_layer,name=sm,display=yes,number=4",
-					"work_layer,name=sm",
-					
-					"sel_ref_feat,layers=temp,use=filter,mode=touch,f_types=pad\;surface,polarity=positive\;negative",
-					"sel_delete",
-					
-					
-					);
+			"clear_layers",
+			
+			"display_layer,name=sm$side,display=yes,number=4",
+			"work_layer,name=sm$side",
+			
+			"sel_ref_feat,layers=pads,use=filter,mode=touch,f_types=pad,polarity=positive\;negative",
+			"sel_copy_other,dest=layer_name,target_layer=sm,invert=no,dx=0,dy=0,size=0",
+			
+			"display_layer,name=pads,display=yes,number=4",
+			"work_layer,name=pads",
+			"sel_ref_feat,layers=temp,use=filter,mode=touch,f_types=pad\;surface,polarity=positive\;negative",
+			"sel_delete",
+			
+			"clear_layers",
+			"affected_layer,name=,mode=all,affected=no",
+			
+			"display_layer,name=sm,display=yes,number=4",
+			"work_layer,name=sm",
+			
+			"sel_ref_feat,layers=temp,use=filter,mode=touch,f_types=pad\;surface,polarity=positive\;negative",
+			"sel_delete",
+		);
 		# here ill need to get the size of the SM and pads.
 		# $solder_area is the area of solder on a surface
 		
@@ -382,17 +440,19 @@ valor("affected_layer,name=sm,mode=single,affected=yes",
 		
 		for(my $o = 0; $o < scalar @unique_pads ; $o++){
 			
-			valor("clear_layers",
-							"filter_reset",
-							"affected_layer,name=pads,mode=single,affected=yes",
-							"filter_set,filter_name=popup,update_popup=no,include_syms=$unique_pads[$o]",
-							"filter_area_strt",
-							"filter_area_end,layer=,filter_name=popup,operation=select",
-							"display_layer,name=sm,display=yes,number=4",
-							"work_layer,name=sm",
-							"filter_reset",
-							"sel_ref_feat,layers=temp,use=select,mode=touch,f_types=pad\;surface,polarity=positive\;negative",
-							"sel_move_other,target_layer=temp,invert=no,dx=0,dy=0,size=0");
+			valor(
+				"clear_layers",
+				"filter_reset",
+				"affected_layer,name=pads,mode=single,affected=yes",
+				"filter_set,filter_name=popup,update_popup=no,include_syms=$unique_pads[$o]",
+				"filter_area_strt",
+				"filter_area_end,layer=,filter_name=popup,operation=select",
+				"display_layer,name=sm,display=yes,number=4",
+				"work_layer,name=sm",
+				"filter_reset",
+				"sel_ref_feat,layers=temp,use=select,mode=touch,f_types=pad\;surface,polarity=positive\;negative",
+				"sel_move_other,target_layer=temp,invert=no,dx=0,dy=0,size=0"
+			);
 							
 			my @unique_sm = extract_unique_symbols(data_pads("temp"));
 			
@@ -435,7 +495,8 @@ valor("affected_layer,name=sm,mode=single,affected=yes",
 										
 										);
 						push(@issue,$sRef[$i]);
-						next;
+
+						
 						pop_up("	Refdes: $pRef[$i] <br>
 											The SM clearce is smaller then the SM release on the surface <br>
 											Solder area on a surface: $solder_area <br>
@@ -445,6 +506,10 @@ valor("affected_layer,name=sm,mode=single,affected=yes",
 						$issue_data{$sRef[$i]}{'pad'} = $unique_pads[$o];
 						$issue_data{$sRef[$i]}{'solder area'} = $solder_area;
 						$issue_data{$sRef[$i]}{'test'} = "SM is smaller then the SM release on the surface.";
+						recreate_layers("sm","pads","temp");
+						$j = 8e+49;
+						$o = $j;
+						next;
 					}
 					
 					
@@ -496,16 +561,18 @@ valor("affected_layer,name=sm,mode=single,affected=yes",
 						$issue_data{$sRef[$i]}{'pad'} = $unique_pads[$o];
 						$issue_data{$sRef[$i]}{'solder area'} = $solder_area;
 						$issue_data{$sRef[$i]}{'test'} = "The pad is smaller then the SM release on the surface";
+						clear_and_reset();
+						recreate_layers("sm","pads","temp");
+						
+						$j = 8e+49;
+						$o = $j;
 						next;
 					}
 				}
-				
+			# here is the problem! the lake of exit
 			}
-		
 		}
-		
 		recreate_layers("sm","pads","temp");
-	
 	}
 }
 
@@ -551,7 +618,7 @@ sub check_surface{
 						
 						
 		if(get_select_count() != 0){
-			
+			push(@pRef,${$REF}[$i]);
 			# the leads located on a surface
 			# this list will go to the sm checks
 			# copying the surface to a temp layer
@@ -566,6 +633,7 @@ sub check_surface{
 			BGA_lead_selection($side,${$REF}[$i]);
 				valor("work_layer,name=sur_$side",
 					"sel_ref_feat,layers=bga_pins_top,use=select,mode=touch,f_types=pad,polarity=positive\;negative");
+			
 			push(@sRef,${$REF}[$i]) if get_select_count != 0;
 			clear_and_reset;
 		} else {

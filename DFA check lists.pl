@@ -107,6 +107,10 @@ sub create_checklist {
 		}
 }
 
+
+
+
+
 sub valor{
 	while ($_[0] or $_){
 		$V->COM(shift);
