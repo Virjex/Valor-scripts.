@@ -31,17 +31,51 @@ foreach my $name(@drill_names){
 }
 
 clear_and_reset;
-# main test to see if the edited backdrills are larger by X factor
 foreach my $name(@names){
 	my $collect_data = 0;
 	#holds all the backdrills data 
 	my %back_drills = data_pads($name);
+
+	# checking for the central X Y
+	# the %back_drills holding the current X Y cords of the drill
+	foreach my $id(keys %back_drills){
+#		pop_up("\$id = $id \$name = $name");
+		valor(
+			"affected_layer,name=drills_for_testing,mode=single,affected=yes",
+			"sel_single_feat,operation=select,x=$back_drills{$id}->{x},y=$back_drills{$id}->{y},tol=0.5,cyclic=yes,shift=no"
+		);
+		my %normal_drills = data_pads("drills_for_testing",'s');
+		for my $normal_drill(keys %normal_drills){
+#			pop_up("
+#				\$name = $name
+#				\$normal_drills{$normal_drill}->{x} = $normal_drills{$normal_drill}->{x} <br> 
+#				\$backdrill{$id}->{x} $back_drills{$id}->{x} <br> 
+#				\$normal_drills{$normal_drill}->{y} $normal_drills{$normal_drill}->{y}  <br> 
+#				\$backdrill{$id}->{y} $back_drills{$id}->{y}");
+			if (($normal_drills{$normal_drill}->{x} != $back_drills{$id}->{x}) && ($normal_drills{$normal_drill}->{y} != $back_drills{$id}->{y})){
+				pop_up("i found something");
+				$issue{missaligment}->{$normal_drill} = {
+
+					backdrill_x => $back_drills{$id}->{x},
+					backdrill_y => $back_drills{$id}->{y},
+					backdrill_layer => substr($name, 0, -8),
+
+					drill_x => $normal_drills{$normal_drill}->{x},
+					drill_y => $normal_drills{$normal_drill}->{y},
+				};
+
+			}
+		}
+		valor("affected_layer,name=,mode=all,affected=no");
+	}
+
+
 	valor(
 		"affected_layer,name=$name,mode=single,affected=yes",
 		"sel_all_feat"
-		);
+	);
 	my $count = get_select_count;
-	
+
 	valor(
 		"affected_layer,name=drills_for_testing,mode=single,affected=yes",
 		"sel_ref_feat,layers=,use=select,mode=cover,f_types=line\;pad\;surface\;arc\;text,polarity=positive\;negative"
@@ -83,7 +117,7 @@ foreach my $name(@names){
 }
 remove_layers(@names);
 create_testing_layers();
-#now we going to loop from the top to the bottom searching for traces touching the back drills
+# Now we going to loop from the top to the bottom searching for traces touching the back drills
 
 my $top_row = get_layer_row_number_by_name("top");
 my $bot_row = get_layer_row_number_by_name("bottom");
@@ -112,8 +146,10 @@ for (my $i = $top_row; $i <= $bot_row; $i++){
 			"sel_ref_feat,layers=,use=select,mode=touch,f_types=line\;pad\;surface\;arc\;text,polarity=positive\;negative,include_syms=,exclude_syms="
 		);
 		foreach my $name(@names){
-			pop_up(join ", ", @names);
-			$issue{trace}->{$layer}->{$name} = data_pads($name, 's');
+			my %temp = data_pads($name, 's');
+			if(scalar (keys %temp) > 0){
+				%{$issue{trace}->{$layer}} = %temp;
+			}
 		}
 	}
 	valor("affected_layer,name=,mode=all,affected=no");
@@ -132,19 +168,29 @@ foreach my $i(@id){
 	}
 }
 
-print $fl "Backdrill touching trace::\n";
+print $fl "Backdrill touching trace:\n";
 print $fl "Copper layer:\tx\ty\n";
 
-@id = (sort keys %{$issue{trace}});
-
 foreach my $layer(keys %{$issue{trace}}){
-	foreach my $drill(keys %{$issue{trace}->{$layer}}){
-		pop_up(join ", ", %{$issue{trace}->{$layer}});
-		foreach my $i(keys %{$issue{trace}->{$layer}->{$drill}}){
-			print $fl "$layer\t$issue{trace}->{$layer}->{$drill}->{$i}->{x}\t$issue{trace}->{$layer}->{$drill}->{$i}->{y}\n";
-		}
+	foreach my $i(keys %{$issue{trace}->{$layer}}){
+		print $fl "$layer\t$issue{trace}->{$layer}->{$i}->{x}\t$issue{trace}->{$layer}->{$i}->{y}\n";
 	}
 }
+
+print $fl "Backdrill missaligment:\n";
+print $fl "backdrill name:\tbackdrill x\tbackdrill y\tdrill x\tdrill y\n";
+foreach my $drill(keys %{$issue{missaligment}}){
+#	foreach my $id(keys %{$issue{missaligment}->{$drill}}){
+		print $fl "$issue{missaligment}->{$drill}->{backdrill_layer}\t$issue{missaligment}->{$drill}->{backdrill_x}\t$issue{missaligment}->{$drill}->{backdrill_y}\t$issue{missaligment}->{$drill}->{drill_x}\t$issue{missaligment}->{$drill}->{drill_y}";
+#	}
+}
+#				$issue{missaligment}->{$normal_drill} = {
+#					backdrill_x = $back_drills{$id}->{x},
+#					backdrill_y = $back_drills{$id}->{y},
+#					backdrill_layer = substr($name, 0, -8),
+#					drill_x = $normal_drills{$normal_drill}->{x},
+#					drill_y = $normal_drills{$normal_drill}->{y},
+#				}
 
 close $fl;
 clear_and_reset;

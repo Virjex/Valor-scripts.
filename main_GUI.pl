@@ -72,6 +72,7 @@ sub GUI {
 						"BGA - testing",
 						
 						"Multiple SMD under SM",
+						"Backdrill checks",
 
 						"Get the refdes from XY - testing",
 						"Get the XY of refdes - testing",
@@ -96,7 +97,8 @@ sub GUI {
 		sub { call_script("BGA\\BGA-Pads"); },
 
 		sub { call_script("manual_checks\\SM_Pads"); },
-		
+		sub { call_script("manual_checks\\backdrill_checks"); },
+
 		sub { call_script("For_reports\\get_refdes"); },
 		sub { call_script("For_reports\\get_loc"); },
 		
@@ -107,7 +109,7 @@ sub GUI {
 		sub { exit },
 	);
 	
-	my @disabled_buttons = (0,12);  # Specify the indxes of buttons to disable
+	my @disabled_buttons = (0,13);  # Specify the indxes of buttons to disable
 
     foreach my $i (0..$#button_labels) {
         my $button = $left_frame->Button(
